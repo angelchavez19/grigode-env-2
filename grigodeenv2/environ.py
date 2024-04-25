@@ -81,12 +81,12 @@ class Env:
             ANY_DATETIME=(datetime, None, {"format": '%d/%m/%y %H:%M:%S'})
         )
 
-        SECRET_KEY = env('SECRET_KEY')
-        DEBUG = env.bool('DEBUG')
-        SERVER_PORT = env.int('SERVER_PORT')
-        EMAIL_PORT = env.int('EMAIL_PORT')
-        HOSTS = env.list('HOSTS')
-        ANY_DATETIME = env('ANY_DATETIME')
+        SECRET_KEY = env('SECRET_KEY') # str
+        DEBUG = env.bool('DEBUG') # bool
+        SERVER_PORT = env.int('SERVER_PORT') #int
+        EMAIL_PORT = env('EMAIL_PORT') #int
+        HOSTS = env.list('HOSTS') # list
+        ANY_DATETIME = env('ANY_DATETIME') # datetime
     """
 
     ENVIRON = os.environ
