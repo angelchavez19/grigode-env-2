@@ -1,7 +1,10 @@
 """Environ"""
 
 import os
-from typing import List, Tuple
+import json
+import datetime
+
+from typing import Any, List, Tuple
 
 
 EQUAL = '='
@@ -69,21 +72,146 @@ class Env:
     """Class to handle environment variables.
 
     Usage:
-        from grigodeenv2 import Env, read_environ
+        from grigodeenv2 import datetime, Env, read_environ
 
         read_environ('.env')
 
-        env = Env()
+        env = Env(
+            EMAIL_PORT=(int, 45),
+            ANY_DATETIME=(datetime, None, {"format": '%d/%m/%y %H:%M:%S'})
+        )
 
         SECRET_KEY = env('SECRET_KEY')
-
-        DEBUG = env('DEBUG')
+        DEBUG = env.bool('DEBUG')
+        SERVER_PORT = env.int('SERVER_PORT')
+        EMAIL_PORT = env.int('EMAIL_PORT')
+        HOSTS = env.list('HOSTS')
+        ANY_DATETIME = env('ANY_DATETIME')
     """
 
     ENVIRON = os.environ
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, **kwars) -> None:
+        self.schema = kwars
 
-    def __call__(self, key: str) -> str | None:
-        return self.ENVIRON.get(key, None)
+    def __call__(self, var: str, cast=str, default=None) -> str | None:
+        return self.get_value(var, cast, default)
+
+    def str(self, var: str, default=None, **kwars) -> str | None:
+        """Returns the value as a str."""
+        return self.get_value(var=var, cast=str, default=default, **kwars)
+
+    def bytes(self, var: str, default=None, **kwars) -> bytes | None:
+        """Returns the value as a bytes."""
+        return self.get_value(var=var, cast=bytes, default=default, **kwars)
+
+    def bool(self, var: str, default=None, **kwars) -> bool | None:
+        """Returns the value as a bool.
+
+        To indicate False, you must set the variable to False, false,
+        or 0. Everything else is considered True.
+        """
+        return self.get_value(var=var, cast=bool, default=default, **kwars)
+
+    def int(self, var: str, default=None, **kwars) -> int | None:
+        """Returns the value as a int."""
+        return self.get_value(var=var, cast=int, default=default, **kwars)
+
+    def float(self, var: str, default=None, **kwars) -> float | None:
+        """Returns the value as a float."""
+        return self.get_value(var=var, cast=float, default=default, **kwars)
+
+    def json(self, var: str, default=None, **kwars) -> Any | None:
+        """Returns the value as a json."""
+        return self.get_value(var=var, cast=json.loads, default=default, **kwars)
+
+    def list(self, var: str, default=None, **kwars) -> List[Any] | None:
+        """Returns the value as a list.
+
+        You should define the lists as you would in JSON.
+        """
+        return self.get_value(var=var, cast=list, default=default, **kwars)
+
+    def tuple(self, var: str, default=None, **kwars) -> Tuple[Any] | None:
+        """Returns the value as a tuple.
+
+        You should define tuples as you would define lists in JSON.
+        """
+        return self.get_value(var=var, cast=tuple, default=default, **kwars)
+
+    def dict(self, var: str, default=None, **kwars) -> dict | None:
+        """Returns the value as a dict."""
+        return self.get_value(var=var, cast=dict, default=default, **kwars)
+
+    def datetime(self, var: str, default=None,
+                 _format='%d/%m/%y %H:%M:%S',
+                 **kwars) -> datetime.datetime | None:
+        """Returns the value as a datetime."""
+        _kwars = {"format": _format}
+        _kwars.update(kwars)
+        return self.get_value(var=var, cast=datetime.datetime,
+                              default=default, **_kwars)
+
+    def get_value(self, var: str, cast=None, default=None, **kwars) -> Any | None:
+        """Returns the value."""
+
+        var_schema = self.schema.get(var)
+        if var_schema is not None:
+            len_var_schema = len(var_schema)
+
+            if len_var_schema >= 1:
+                cast = var_schema[0]
+            if len_var_schema >= 2:
+                default = var_schema[1]
+            if len_var_schema >= 3:
+                kwars = var_schema[2]
+
+        value = self.ENVIRON.get(var)
+
+        if value is None:
+            return default
+
+        return self.parse_value(var, value, cast, **kwars)
+
+    def parse_value(self, var: str, value: str, cast=None, **kwars) -> Any:
+        """Return the parsed value."""
+
+        def to_bool(value: str, **_):
+            if value in ('False', 'false', '0', ''):
+                return False
+            return True
+
+        def to_list(value: str, **_):
+            try:
+                _list = json.loads(value)
+            except json.decoder.JSONDecodeError as e:
+                raise SyntaxError(
+                    f"The syntax of variable '{var}' is invalid.") from e
+            if isinstance(_list, list):
+                return _list
+            raise ValueError(f"The variable '{var}' is not a list.")
+
+        def to_tuple(value: str, **_):
+            return tuple(to_list(value))
+
+        def to_datetime(value: str, **kwars):
+            return datetime.datetime.strptime(value, kwars.get('format'))
+
+        casts = {
+            bool: to_bool,
+            list: to_list,
+            tuple: to_tuple,
+            datetime.datetime: to_datetime,
+        }
+
+        if cast is None or not callable(cast):
+            return None
+
+        _cast = casts.get(cast)
+
+        if _cast is None:
+            return None
+
+        cast = _cast
+
+        return cast(value, **kwars)
